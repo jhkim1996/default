@@ -1,14 +1,15 @@
-"""Command line: python -m lotto {update,analyze,pick,plan}."""
+"""Command line: python -m lotto {update,analyze,pick,plan,sim}."""
 
 import argparse
 import datetime as dt
 import random
 import sys
 import unicodedata
+from collections import Counter
 from pathlib import Path
 
 from . import data, stats
-from .generator import TOTAL_COMBINATIONS, generate, overlap_bound_rate
+from .generator import TOTAL_COMBINATIONS, generate, least_and_middle, overlap_bound_rate, simulate_auto
 
 
 def _cell(text, width, left=False):
@@ -113,6 +114,23 @@ def cmd_plan(args):
     _print_missing_history(last_draw)
 
 
+def cmd_sim(args):
+    draw_no, rng, _, _ = _context(args)
+    slots = simulate_auto(args.sheets, rng=rng)
+    cold, lines = least_and_middle(slots, rng)
+    total = sum(slots, Counter())
+    print(f"{draw_no}회 ({data.draw_date(draw_no)}) 자동 {args.sheets:,}장 ({args.sheets * 5:,}줄) 시뮬레이션\n")
+    print(f"[전체 {args.sheets * 5:,}줄] 가장 적게 나온 번호 4개 (번호당 평균 {args.sheets * 5 * stats.K / stats.N:.1f}회)")
+    print("  " + ", ".join(f"{n}({total[n]}회)" for n in cold))
+    print(f"[줄 자리별 {args.sheets:,}줄] 중간 정도 나온 번호 2개 (번호당 평균 {args.sheets * stats.K / stats.N:.1f}회)")
+    for label, slot, line in zip("ABCDE", slots, lines):
+        middle = [n for n in line if n not in cold]
+        print(f"  {label}줄: " + ", ".join(f"{n}({slot[n]}회)" for n in middle))
+    print()
+    _print_sheet("5,000원 1장", lines)
+    print(f"\n※ 자동 번호는 균등 무작위라 시뮬레이션의 많고 적음은 우연이며, 각 줄의 1등 확률은 1/{TOTAL_COMBINATIONS:,}로 같습니다.")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m lotto", description="로또 6/45 분석 및 번호 생성")
     parser.add_argument("--csv", type=Path, default=data.DEFAULT_CSV, help="당첨 이력 CSV 경로")
@@ -135,6 +153,12 @@ def main(argv=None):
     plan.add_argument("--draw", type=int, help="회차 (기본: 이번 주 토요일 회차)")
     plan.add_argument("--seed", type=int, help="재현용 난수 시드")
     plan.set_defaults(func=cmd_plan)
+
+    sim = sub.add_parser("sim", help="자동 구매 시뮬레이션: 최소 빈도 4개 + 줄별 중간 빈도 2개로 1장")
+    sim.add_argument("--sheets", type=int, default=1000, help="시뮬레이션할 자동 구매 장 수 (기본 1000)")
+    sim.add_argument("--draw", type=int, help="회차 (기본: 이번 주 토요일 회차)")
+    sim.add_argument("--seed", type=int, help="재현용 난수 시드")
+    sim.set_defaults(func=cmd_sim)
 
     args = parser.parse_args(argv)
     args.func(args)
