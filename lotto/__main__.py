@@ -134,6 +134,11 @@ def cmd_sim(args):
 
 
 def main(argv=None):
+    # Piped output on Windows goes through the ANSI code page, which may lack Hangul.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(prog="python -m lotto", description="로또 6/45 분석 및 번호 생성")
     parser.add_argument("--csv", type=Path, default=data.DEFAULT_CSV, help="당첨 이력 CSV 경로")
     sub = parser.add_subparsers(dest="command", required=True)

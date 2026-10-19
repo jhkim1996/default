@@ -11,8 +11,6 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      PYTHONUTF8: "1"  # Korean output on runners whose locale encoding can't hold it
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
