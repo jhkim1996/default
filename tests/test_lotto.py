@@ -1,10 +1,8 @@
 import argparse
 import datetime as dt
 import random
-import statistics
 import tempfile
 import unittest
-from collections import Counter
 from pathlib import Path
 
 from lotto import data, stats
@@ -116,21 +114,12 @@ class GeneratorTest(unittest.TestCase):
                 _line(bad)
 
     def test_least_and_middle(self):
-        slots = simulate_auto(1000, rng=random.Random(5))
-        self.assertTrue(all(sum(slot.values()) == 6000 for slot in slots))
-        total = sum(slots, Counter())
-        cold, lines = least_and_middle(slots, random.Random(6))
-        self.assertEqual(len(cold), 4)
-        self.assertLessEqual(max(total[n] for n in cold), min(total[n] for n in stats.NUMBERS if n not in cold))
-        self.assertEqual(len(set(lines)), 5)
-        for slot, line in zip(slots, lines):
-            self.assertTrue(set(cold) <= set(line))
-            rest = [n for n in stats.NUMBERS if n not in cold]
-            median = statistics.median(slot[n] for n in rest)
-            spread = sorted(abs(slot[n] - median) for n in rest)
-            for n in set(line) - set(cold):
-                self.assertLessEqual(abs(slot[n] - median), spread[2])
-
+        counts = simulate_auto(1000, rng=random.Random(5))
+        self.assertEqual(sum(counts.values()), 1000 * 5 * 6)
+        least, middle = least_and_middle(counts, random.Random(6))
+        ranked = sorted(counts.values())
+        self.assertEqual(sorted(counts[n] for n in least), ranked[:4])
+        self.assertEqual(sorted(counts[n] for n in middle), ranked[21:23])
 
 if __name__ == "__main__":
     unittest.main()

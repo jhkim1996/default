@@ -7,10 +7,8 @@ shapes on the slip and last week's numbers. Rejecting those combinations from a
 uniform draw keeps the odds intact while lowering the expected number of co-winners.
 """
 
-import itertools
 import math
 import random
-import statistics
 from collections import Counter
 
 from .stats import K, N, NUMBERS
@@ -99,35 +97,21 @@ def pass_rate(samples=200_000, seed=0) -> float:
     return ok / samples
 
 
-def simulate_auto(sheets=1000, games=5, rng=None) -> list[Counter]:
-    """Number counts per line slot (A, B, ...) over `sheets` simulated auto (quick-pick) tickets."""
+def simulate_auto(sheets=1000, games=5, rng=None) -> Counter:
+    """Number counts over `sheets` simulated auto (quick-pick) tickets of `games` lines each."""
     rng = rng or random.SystemRandom()
-    slots = [Counter() for _ in range(games)]
-    for _ in range(sheets):
-        for slot in slots:
-            slot.update(rng.sample(NUMBERS, K))
-    return slots
+    counts = Counter(dict.fromkeys(NUMBERS, 0))
+    for _ in range(sheets * games):
+        counts.update(rng.sample(NUMBERS, K))
+    return counts
 
 
-def least_and_middle(slots, rng=None, least=4, middle=2):
-    """Build one line per slot from simulated counts.
+def least_and_middle(counts, rng=None, least=4, middle=2):
+    """The `least` least-drawn numbers and the `middle` numbers ranked in the middle.
 
-    Every line holds the `least` numbers drawn least often over all slots, plus the
-    `middle` numbers whose count in its own slot is closest to that slot's median.
-    Returns (shared least numbers, lines).
+    Ties are broken at random. Returns (least numbers, middle numbers).
     """
     rng = rng or random.SystemRandom()
-    total = sum(slots, Counter())
-    cold = sorted(sorted(NUMBERS, key=lambda n: (total[n], rng.random()))[:least])
-    rest = [n for n in NUMBERS if n not in cold]
-    lines = []
-    for slot in slots:
-        median = statistics.median(slot[n] for n in rest)
-        ranked = sorted(rest, key=lambda n: (abs(slot[n] - median), rng.random()))
-        # Closest pair first; move on only if another slot already made the same line.
-        for pair in itertools.combinations(ranked, middle):
-            line = tuple(sorted((*cold, *pair)))
-            if line not in lines:
-                break
-        lines.append(line)
-    return cold, lines
+    ranked = sorted(NUMBERS, key=lambda n: (counts[n], rng.random()))
+    mid = N // 2 - middle // 2
+    return sorted(ranked[:least]), sorted(ranked[mid:mid + middle])
