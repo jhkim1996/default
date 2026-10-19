@@ -12,6 +12,20 @@ python -m lotto sim        # 줄마다 자동 1,000장 시뮬레이션 → 가�
 python -m unittest         # 테스트
 ```
 
+## 실행파일
+
+파이썬 없이 쓰는 실행파일은 GitHub Actions가 푸시할 때마다 Windows·macOS·Linux용으로 만듭니다.
+저장소의 **Actions → Build executables → 최근 실행 → Artifacts**에서 `lotto-Windows` 등을 내려받아 압축을 풉니다.
+
+- **더블클릭**하면 `sim`(줄마다 자동 1,000장 시뮬레이션) 번호 1장이 나오고, 엔터를 누르면 다시 뽑고 `q`를 누르면 종료합니다.
+- 명령 프롬프트·터미널에서는 `lotto pick`, `lotto plan`, `lotto update`처럼 위 명령을 그대로 쓸 수 있습니다.
+  `update`로 받은 당첨 이력은 실행파일 옆 `data` 폴더에 저장됩니다.
+- 서명하지 않은 실행파일이라 Windows에서 "PC 보호" 경고가 뜨면 **추가 정보 → 실행**을,
+  macOS에서는 **우클릭 → 열기**를 누르세요.
+
+직접 만들려면 `pip install pyinstaller` 후 `pyinstaller --onefile --name lotto lotto_app.py`를 실행하면 `dist/`에 생깁니다.
+(PyInstaller는 실행하는 OS용 파일만 만듭니다.)
+
 ## 먼저 알아둘 점
 
 로또 추첨은 매번 독립적인 균등 추첨이라, 어떤 조합이든 1등 확률은 **1/8,145,060**으로 같습니다.

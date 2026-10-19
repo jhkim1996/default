@@ -1,0 +1,35 @@
+name: Build executables
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: "1"  # Korean output on runners whose locale encoding can't hold it
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test
+        run: python -m unittest -v
+      - name: Build
+        run: |
+          python -m pip install pyinstaller
+          pyinstaller --onefile --name lotto lotto_app.py
+      - name: Smoke test
+        shell: bash
+        run: |
+          ./dist/lotto sim --seed 1
+          echo q | ./dist/lotto
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lotto-${{ runner.os }}
+          path: dist/lotto*

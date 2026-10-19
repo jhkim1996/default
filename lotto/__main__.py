@@ -43,7 +43,7 @@ def _print_sheet(title, lines):
 
 def _print_missing_history(last_draw):
     if not last_draw:
-        print("  (지난 회차 데이터가 없어 과거 1등·지난 회차 번호 필터는 건너뛰었습니다. `python -m lotto update` 후 다시 실행하세요.)")
+        print("  (지난 회차 데이터가 없어 과거 1등·지난 회차 번호 필터는 건너뛰었습니다. `update` 명령으로 당첨 이력을 받은 뒤 다시 실행하세요.)")
 
 
 def cmd_update(args):
@@ -57,7 +57,7 @@ def cmd_update(args):
 def cmd_analyze(args):
     draws = data.load(args.csv)
     if len(draws) < 100:
-        sys.exit("당첨 이력이 부족합니다. 먼저 `python -m lotto update`를 실행하세요.")
+        sys.exit("당첨 이력이 부족합니다. 먼저 `update` 명령으로 당첨 이력을 받으세요.")
     print(f"데이터: {draws[0].no}회({draws[0].date}) ~ {draws[-1].no}회({draws[-1].date}), {len(draws)}회차\n")
 
     freq = stats.frequencies(draws)

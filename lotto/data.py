@@ -3,6 +3,7 @@
 import csv
 import datetime as dt
 import json
+import sys
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -10,7 +11,9 @@ from pathlib import Path
 
 API_URL = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo={}"
 FIRST_DRAW = dt.date(2002, 12, 7)  # draw 1; one draw every Saturday since
-DEFAULT_CSV = Path(__file__).resolve().parent.parent / "data" / "draws.csv"
+# A PyInstaller build unpacks into a temporary folder, so keep its data next to the executable.
+_BASE = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+DEFAULT_CSV = _BASE / "data" / "draws.csv"
 FIELDS = ["draw", "date", "n1", "n2", "n3", "n4", "n5", "n6", "bonus"]
 
 
