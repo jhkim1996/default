@@ -1,7 +1,7 @@
 """Entry point for the standalone executable.
 
 With arguments it behaves like `python -m lotto`; double-clicked (no arguments)
-it runs `sim` and keeps the window open so the numbers can be read and re-drawn.
+it runs `ratio` and keeps the window open so the numbers can be read and re-drawn.
 """
 
 import sys
@@ -13,7 +13,7 @@ if __name__ == "__main__":
         main()
     else:
         while True:
-            main(["sim"])
+            main(["ratio"])
             try:
                 again = input("\n엔터: 다시 뽑기 / q: 종료 > ")
             except EOFError:

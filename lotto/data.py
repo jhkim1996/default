@@ -13,7 +13,8 @@ API_URL = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo={}"
 FIRST_DRAW = dt.date(2002, 12, 7)  # draw 1; one draw every Saturday since
 # A PyInstaller build unpacks into a temporary folder, so keep its data next to the executable.
 _BASE = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-DEFAULT_CSV = _BASE / "data" / "draws.csv"
+DATA_DIR = _BASE / "data"
+DEFAULT_CSV = DATA_DIR / "draws.csv"
 FIELDS = ["draw", "date", "n1", "n2", "n3", "n4", "n5", "n6", "bonus"]
 
 

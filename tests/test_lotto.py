@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lotto import data, stats
+from lotto import data, prizes, stats
 from lotto.__main__ import _line
 from lotto.generator import (
     generate,
@@ -120,6 +120,29 @@ class GeneratorTest(unittest.TestCase):
         ranked = sorted(counts.values())
         self.assertEqual(sorted(counts[n] for n in least), ranked[:4])
         self.assertEqual(sorted(counts[n] for n in middle), ranked[21:23])
+
+
+class PrizesTest(unittest.TestCase):
+    def test_tier_ways_cover_three_or_more_matches(self):
+        self.assertEqual(prizes.TIER_WAYS, (1, 6, 228, 11115, 182780))
+        self.assertAlmostEqual(sum(prizes.TIER_WAYS) / prizes.TOTAL, stats.P_THREE_PLUS)
+
+    def test_exact_expectation_matches_itself(self):
+        games = 100_000_000
+        row = tuple(games * w / prizes.TOTAL for w in prizes.TIER_WAYS)
+        self.assertAlmostEqual(prizes.games_sold(row), games)
+        for observed, expected in prizes.compare([row]):
+            self.assertAlmostEqual(observed / expected, 1)
+
+    def test_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "prizes.csv"
+            self.assertEqual(prizes.load(path), prizes.RECENT)
+            path.write_text(",".join(prizes.FIELDS) + "\n1,2,3,4,5,1,0,0\n", encoding="utf-8")
+            self.assertEqual(prizes.load(path), [(1, 2, 3, 4, 5, 1, 0, 0)])
+        for row in prizes.RECENT:
+            self.assertEqual(row[0], sum(row[5:]))
+
 
 if __name__ == "__main__":
     unittest.main()

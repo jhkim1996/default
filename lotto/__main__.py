@@ -1,4 +1,4 @@
-"""Command line: python -m lotto {update,analyze,pick,plan,sim}."""
+"""Command line: python -m lotto {update,analyze,pick,plan,sim,ratio}."""
 
 import argparse
 import datetime as dt
@@ -7,7 +7,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-from . import data, stats
+from . import data, prizes, stats
 from .generator import TOTAL_COMBINATIONS, generate, least_and_middle, overlap_bound_rate, simulate_auto
 
 
@@ -133,6 +133,32 @@ def cmd_sim(args):
     print(f"\n※ 자동 번호는 균등 무작위라 시뮬레이션의 많고 적음은 우연이며, 각 줄의 1등 확률은 1/{TOTAL_COMBINATIONS:,}로 같습니다.")
 
 
+def cmd_ratio(args):
+    """Check recent prize tables against random expectation, then pick combinations that fit them."""
+    rows = prizes.load(args.prizes)
+    draw_no, rng, past, last_draw = _context(args)
+    games = sum(prizes.games_sold(r) for r in rows) / len(rows)
+    auto, first = sum(r[5] for r in rows), sum(r[0] for r in rows)
+
+    print(f"[최근 {len(rows)}회 당첨 결과] 판매량 추정: 회당 약 {games / 1e8:.2f}억 게임 (등수별 당첨자 수로 역산)\n")
+    print("  " + _cell("등수", 6, left=True) + _cell("평균 당첨자", 14) + _cell("무작위 조합 기대값", 20) + _cell("관측/기대", 11))
+    comparison = prizes.compare(rows)
+    for tier, (observed, expected) in enumerate(comparison, 1):
+        print("  " + _cell(f"{tier}등", 6, left=True) + _cell(f"{observed:,.1f}", 14)
+              + _cell(f"{expected:,.1f}", 20) + _cell(f"{observed / expected:.2f}", 11))
+    ratio = " : ".join(f"{w:,}" for w in prizes.TIER_WAYS)
+    print(f"\n  1등 당첨 {first}게임 중 자동 {auto}게임 ({auto / first:.0%})")
+    print(f"  → 1~5등 비율은 당첨번호와 상관없이 {ratio} × 판매량으로 정해집니다.")
+    first_observed, first_expected = comparison[0]
+    if first_observed < first_expected:
+        print(f"    1등이 {first_observed / first_expected:.2f}배인 건 수동 구매가 일부 조합에 몰리기 때문으로, 그런 조합은 1등이 평소보다 훨씬 많이 나옵니다.")
+    print("    그래서 사람들이 많이 고르는 패턴(생일·연속·등차·용지 모양)을 뺀 조합으로 골랐습니다.\n")
+
+    _print_sheet(f"{draw_no}회 ({data.draw_date(draw_no)}) 5,000원 1장", generate(5, rng, past, last_draw))
+    print(f"\n※ 각 줄의 1등 확률은 1/{TOTAL_COMBINATIONS:,}로 같습니다.")
+    _print_missing_history(last_draw)
+
+
 def main(argv=None):
     # Piped output on Windows goes through the ANSI code page, which may lack Hangul.
     for stream in (sys.stdout, sys.stderr):
@@ -166,6 +192,12 @@ def main(argv=None):
     sim.add_argument("--draw", type=int, help="회차 (기본: 이번 주 토요일 회차)")
     sim.add_argument("--seed", type=int, help="재현용 난수 시드")
     sim.set_defaults(func=cmd_sim)
+
+    ratio = sub.add_parser("ratio", help="최근 1~5등 당첨자 비율 분석 + 그 비율에 맞는 1장")
+    ratio.add_argument("--prizes", type=Path, default=prizes.DEFAULT_PRIZES, help="등수별 당첨자 수 CSV (없으면 내장된 최근 5회)")
+    ratio.add_argument("--draw", type=int, help="회차 (기본: 이번 주 토요일 회차)")
+    ratio.add_argument("--seed", type=int, help="재현용 난수 시드")
+    ratio.set_defaults(func=cmd_ratio)
 
     args = parser.parse_args(argv)
     args.func(args)
