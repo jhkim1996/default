@@ -1,3 +1,4 @@
+import argparse
 import datetime as dt
 import random
 import tempfile
@@ -5,7 +6,8 @@ import unittest
 from pathlib import Path
 
 from lotto import data, stats
-from lotto.generator import generate, longest_progression, longest_run, popularity_flags
+from lotto.__main__ import _line
+from lotto.generator import generate, longest_progression, longest_run, overlap_bound_rate, popularity_flags
 
 
 def simulated_draws(count, seed=1):
@@ -83,6 +85,25 @@ class GeneratorTest(unittest.TestCase):
             self.assertEqual(popularity_flags(combo), [])
             for other in picks[:i]:
                 self.assertLessEqual(len(set(combo) & set(other)), 2)
+
+    def test_generate_avoids_bought_lines(self):
+        bought = generate(10, random.Random(3))
+        third = generate(5, random.Random(4), avoid=bought)
+        for combo in third:
+            for line in bought:
+                self.assertLessEqual(len(set(combo) & set(line)), 2)
+
+    def test_overlap_bound_rate_matches_hypergeometric(self):
+        # One line keeps <= 2 hits unless it wins 5th prize or better.
+        rate = overlap_bound_rate([(2, 9, 19, 33, 38, 44)], samples=100_000)
+        self.assertAlmostEqual(rate, 1 - stats.P_THREE_PLUS, delta=0.003)
+        self.assertEqual(overlap_bound_rate([(1, 2, 3, 4, 5, 6)], max_overlap=6, samples=1000), 1.0)
+
+    def test_parse_line(self):
+        self.assertEqual(_line("40,5 14 27 29 32"), (5, 14, 27, 29, 32, 40))
+        for bad in ("1 2 3 4 5", "1 1 2 3 4 5", "0 2 3 4 5 6", "2 3 4 5 6 46"):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                _line(bad)
 
 
 if __name__ == "__main__":

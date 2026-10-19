@@ -1,4 +1,4 @@
-"""Command line: python -m lotto {update,analyze,pick}."""
+"""Command line: python -m lotto {update,analyze,pick,plan}."""
 
 import argparse
 import datetime as dt
@@ -8,13 +8,42 @@ import unicodedata
 from pathlib import Path
 
 from . import data, stats
-from .generator import TOTAL_COMBINATIONS, generate
+from .generator import TOTAL_COMBINATIONS, generate, overlap_bound_rate
 
 
 def _cell(text, width, left=False):
     """Pad to a terminal width, counting Hangul as two columns."""
     pad = " " * (width - sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text))
     return text + pad if left else pad + text
+
+
+def _line(text):
+    """Parse a bought line such as "5 14 27 29 32 40" or "5,14,27,29,32,40"."""
+    numbers = sorted({int(t) for t in text.replace(",", " ").split()})
+    if len(numbers) != stats.K or not all(1 <= n <= stats.N for n in numbers):
+        raise argparse.ArgumentTypeError(f"1~45 사이 서로 다른 숫자 6개가 필요합니다: {text!r}")
+    return tuple(numbers)
+
+
+def _context(args):
+    """Draw number, RNG and the history-based filters shared by pick and plan."""
+    draws = data.load(args.csv)
+    draw_no = args.draw or data.draw_no_on_or_after(dt.date.today())
+    rng = random.Random(args.seed) if args.seed is not None else random.SystemRandom()
+    past = frozenset(d.numbers for d in draws)
+    last_draw = draws[-1].numbers if draws and draws[-1].no == draw_no - 1 else ()
+    return draw_no, rng, past, last_draw
+
+
+def _print_sheet(title, lines):
+    print(title)
+    for label, combo in zip("ABCDE", lines):
+        print(f"  {label}: " + " ".join(f"{n:2d}" for n in combo))
+
+
+def _print_missing_history(last_draw):
+    if not last_draw:
+        print("  (지난 회차 데이터가 없어 과거 1등·지난 회차 번호 필터는 건너뛰었습니다. `python -m lotto update` 후 다시 실행하세요.)")
 
 
 def cmd_update(args):
@@ -51,20 +80,37 @@ def cmd_analyze(args):
 
 
 def cmd_pick(args):
-    draws = data.load(args.csv)
-    draw_no = args.draw or data.draw_no_on_or_after(dt.date.today())
-    rng = random.Random(args.seed) if args.seed is not None else random.SystemRandom()
-    past = frozenset(d.numbers for d in draws)
-    last_draw = draws[-1].numbers if draws and draws[-1].no == draw_no - 1 else ()
-
+    draw_no, rng, past, last_draw = _context(args)
     picks = generate(args.games, rng, past, last_draw)
     print(f"{draw_no}회 ({data.draw_date(draw_no)}) 추천 번호")
     for label, combo in zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ", picks):
         print(f"  {label}: " + " ".join(f"{n:2d}" for n in combo))
     print(f"\n※ 1등 확률은 어떤 조합이든 1/{TOTAL_COMBINATIONS:,}로 같습니다.")
     print("  생일·연속·등차·용지 패턴 등 사람들이 몰리는 조합을 피해, 당첨 시 나눠 가질 확률을 낮춘 번호입니다.")
-    if not last_draw:
-        print("  (지난 회차 데이터가 없어 과거 1등·지난 회차 번호 필터는 건너뛰었습니다. `python -m lotto update` 후 다시 실행하세요.)")
+    _print_missing_history(last_draw)
+
+
+def cmd_plan(args):
+    """Tickets 1-2 first; ticket 3 only from combinations left if no earlier line hits 3+."""
+    draw_no, rng, past, last_draw = _context(args)
+    bought = args.line or generate(10, rng, past, last_draw)
+    third = generate(5, rng, past, last_draw, avoid=bought)
+
+    print(f"{draw_no}회 ({data.draw_date(draw_no)}) 3장 구매 계획\n")
+    sheets = [bought[i:i + 5] for i in range(0, len(bought), 5)]
+    for i, sheet in enumerate(sheets, 1):
+        _print_sheet(f"{i}장{' (입력한 번호)' if args.line else ''}", sheet)
+    _print_sheet(f"{len(sheets) + 1}장 (앞 {len(bought)}줄과 각각 2개 이하로만 겹치는 번호)", third)
+
+    rate = overlap_bound_rate(bought)
+    remaining = rate * TOTAL_COMBINATIONS
+    print(f"\n[가정] 앞의 {len(bought)}줄이 모두 2개 이하로 맞는다")
+    print(f"  가정이 맞을 확률:          약 {rate:.1%}  (1등 후보가 약 {remaining:,.0f}개 조합으로 줄어듦)")
+    print(f"  가정이 맞을 때 마지막 장 1줄의 1등 확률: 약 1/{remaining:,.0f}")
+    print(f"  가정이 틀릴 확률:          약 {1 - rate:.1%}  → 앞 장에서 3개 이상(5등 이상) 당첨, 마지막 장 1등은 불가")
+    print(f"  두 경우를 합치면 마지막 장 1줄의 1등 확률: {rate:.1%} × 1/{remaining:,.0f} = 1/{TOTAL_COMBINATIONS:,} (변화 없음)")
+    print(f"  → 1등 확률은 {len(bought) + len(third)}줄 × 1/{TOTAL_COMBINATIONS:,}. 대신 줄끼리 번호가 덜 겹쳐 고르게 퍼집니다.")
+    _print_missing_history(last_draw)
 
 
 def main(argv=None):
@@ -83,6 +129,12 @@ def main(argv=None):
     pick.add_argument("--draw", type=int, help="회차 (기본: 이번 주 토요일 회차)")
     pick.add_argument("--seed", type=int, help="재현용 난수 시드")
     pick.set_defaults(func=cmd_pick)
+
+    plan = sub.add_parser("plan", help="2장 산 뒤 '줄마다 2개 이하' 가정으로 3장째 번호 고르기")
+    plan.add_argument("--line", type=_line, action="append", help='이미 산 번호 한 줄 (예: --line "5 14 27 29 32 40"), 여러 번 지정')
+    plan.add_argument("--draw", type=int, help="회차 (기본: 이번 주 토요일 회차)")
+    plan.add_argument("--seed", type=int, help="재현용 난수 시드")
+    plan.set_defaults(func=cmd_plan)
 
     args = parser.parse_args(argv)
     args.func(args)

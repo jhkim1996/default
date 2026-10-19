@@ -59,8 +59,9 @@ def popularity_flags(combo, past=frozenset(), last_draw=()) -> list[str]:
     return flags
 
 
-def generate(games=5, rng=None, past=frozenset(), last_draw=(), max_overlap=2, max_tries=1_000_000):
-    """Draw `games` unflagged combinations sharing at most `max_overlap` numbers pairwise."""
+def generate(games=5, rng=None, past=frozenset(), last_draw=(), max_overlap=2, avoid=(), max_tries=1_000_000):
+    """Draw `games` unflagged combinations sharing at most `max_overlap` numbers
+    with each other and with every line in `avoid` (tickets already bought)."""
     rng = rng or random.SystemRandom()
     picks = []
     for _ in range(max_tries):
@@ -69,10 +70,24 @@ def generate(games=5, rng=None, past=frozenset(), last_draw=(), max_overlap=2, m
         combo = tuple(sorted(rng.sample(NUMBERS, K)))
         if popularity_flags(combo, past, last_draw):
             continue
-        if any(len(set(combo) & set(p)) > max_overlap for p in picks):
+        if any(len(set(combo) & set(p)) > max_overlap for p in (*avoid, *picks)):
             continue
         picks.append(combo)
     raise ValueError(f"could not find {games} combinations; lower games or raise max_overlap")
+
+
+def overlap_bound_rate(lines, max_overlap=2, samples=200_000, seed=0) -> float:
+    """Estimated share of all combinations sharing at most `max_overlap` numbers with every line.
+
+    Equivalently, the chance that a fair draw leaves each line with `max_overlap` hits or fewer.
+    """
+    rng = random.Random(seed)
+    masks = [sum(1 << n for n in line) for line in lines]
+    ok = 0
+    for _ in range(samples):
+        draw = sum(1 << n for n in rng.sample(NUMBERS, K))
+        ok += all((draw & m).bit_count() <= max_overlap for m in masks)
+    return ok / samples
 
 
 def pass_rate(samples=200_000, seed=0) -> float:
