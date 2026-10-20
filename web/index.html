@@ -1,0 +1,373 @@
+<title>로또 비율 추천기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+KR:wght@400;600&display=swap">
+<style>
+/* Layout: one narrow column; the pick is styled as an OMR lotto slip (rows A–E), analysis below it. */
+:root {
+  --paper: #f3f5f8;
+  --sheet: #ffffff;
+  --ink: #1c2331;
+  --muted: #5a6476;
+  --rule: #dce1e9;
+  --omr: #cf2f47;
+  --omr-soft: #fbe7ea;
+  /* Ball colours follow the Korean draw convention by number range; same in both themes. */
+  --ball-1: #fbc400;
+  --ball-2: #69c8f2;
+  --ball-3: #ff7272;
+  --ball-4: #aaaaaa;
+  --ball-5: #b0d840;
+  --ball-ink: #1b1b1b;
+  --display: "Black Han Sans", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #10141c; --sheet: #19202b; --ink: #e7eaf0; --muted: #9ba4b6;
+    --rule: #2b3341; --omr: #ff6b7e; --omr-soft: #3b1f27; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #10141c; --sheet: #19202b; --ink: #e7eaf0; --muted: #9ba4b6;
+  --rule: #2b3341; --omr: #ff6b7e; --omr-soft: #3b1f27; color-scheme: dark;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+.wrap {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding-block: 2.5rem 3rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 2.25rem;
+}
+.wrap > * { min-width: 0; }  /* let the table scroll in its own box instead of widening the page */
+header { display: grid; gap: 0.5rem; }
+.eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  color: var(--omr);
+  font-weight: 600;
+}
+h1 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(1.9rem, 6vw, 2.6rem);
+  line-height: 1.15;
+  text-wrap: balance;
+}
+h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  text-wrap: balance;
+}
+p { margin: 0; max-width: 65ch; }
+.lede { color: var(--muted); }
+
+/* The slip */
+.slip {
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-top: 4px solid var(--omr);
+  border-radius: 6px;
+  padding: 1.25rem clamp(0.9rem, 3vw, 1.5rem);
+  display: grid;
+  gap: 1.1rem;
+}
+.lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.7rem; }
+.line { display: flex; align-items: center; gap: 0.75rem; }
+.tag {
+  flex: none;
+  width: 1.9rem; height: 1.9rem;
+  display: grid; place-items: center;
+  border: 1.5px solid var(--omr);
+  color: var(--omr);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+.balls { display: flex; flex-wrap: wrap; gap: 0.4rem; min-width: 0; }
+.ball {
+  width: 2.5rem; height: 2.5rem;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  color: var(--ball-ink);
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.14);
+  animation: pop 260ms ease-out both;
+}
+.r1 { background: var(--ball-1); }
+.r2 { background: var(--ball-2); }
+.r3 { background: var(--ball-3); }
+.r4 { background: var(--ball-4); }
+.r5 { background: var(--ball-5); }
+@keyframes pop { from { transform: scale(0.85); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .ball { animation: none; } }
+@media (max-width: 420px) {
+  .ball { width: 2.15rem; height: 2.15rem; font-size: 0.9rem; }
+  .balls { gap: 0.3rem; }
+  .line { gap: 0.5rem; }
+}
+
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.6rem 1.1rem;
+  border-radius: 6px;
+  border: 1.5px solid var(--omr);
+  background: transparent;
+  color: var(--omr);
+  cursor: pointer;
+}
+button.primary { background: var(--omr); color: var(--sheet); }
+button:hover { background: var(--omr-soft); }
+button.primary:hover { filter: brightness(1.08); background: var(--omr); }
+button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.status { font-size: 0.85rem; color: var(--muted); }
+
+/* Analysis */
+section.info { display: grid; gap: 0.9rem; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-align: right; letter-spacing: 0.02em; }
+th:first-child, td:first-child { text-align: left; }
+td { text-align: right; font-family: var(--mono); font-size: 0.92rem; }
+td:first-child { font-family: var(--body); font-weight: 600; }
+@media (max-width: 420px) {
+  th, td { padding: 0.5rem 0.35rem; }
+  td { font-size: 0.82rem; }
+}
+.chip {
+  display: inline-block;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+}
+.chip.off { border-color: var(--omr); color: var(--omr); }
+.note { color: var(--muted); font-size: 0.95rem; }
+.ways { font-family: var(--mono); color: var(--ink); }
+ul.rules { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.3rem; }
+footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--rule); padding-top: 1rem; }
+</style>
+
+<main class="wrap">
+  <header>
+    <p class="eyebrow" id="draw">로또 6/45</p>
+    <h1>이번 주 5,000원 1장</h1>
+    <p class="lede">최근 1~5등 당첨자 비율에 맞는 번호입니다. 사람들이 많이 고르는 패턴은 뺐습니다.</p>
+  </header>
+
+  <section class="slip" aria-label="추천 번호">
+    <ol class="lines" id="lines"></ol>
+    <div class="actions">
+      <button type="button" class="primary" id="redraw">다시 뽑기</button>
+      <button type="button" id="copy">번호 복사</button>
+      <span class="status" id="status" role="status"></span>
+    </div>
+  </section>
+
+  <section class="info" aria-labelledby="ratio-title">
+    <h2 id="ratio-title">최근 5회 1~5등 당첨자</h2>
+    <p class="note">판매량 추정: 회당 약 <strong id="games"></strong> (등수별 당첨자 수로 역산)</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>등수</th><th>평균 당첨자</th><th>무작위 조합 기대값</th><th>관측/기대</th></tr></thead>
+        <tbody id="tiers"></tbody>
+      </table>
+    </div>
+    <p>
+      한 게임이 각 등수에 해당하는 경우의 수는 <span class="ways">1 : 6 : 228 : 11,115 : 182,780</span>으로 정해져 있어서,
+      2~5등 당첨자 수는 당첨번호와 상관없이 이 비율 × 판매량이 됩니다.
+    </p>
+    <p id="first-note"></p>
+  </section>
+
+  <section class="info" aria-labelledby="rules-title">
+    <h2 id="rules-title">뺀 패턴</h2>
+    <ul class="rules">
+      <li>31보다 큰 번호가 2개 미만 (생일 숫자 위주)</li>
+      <li>연속 번호 3개 이상</li>
+      <li>같은 간격으로 이어지는 번호 4개 이상 (예: 5, 10, 15, 20)</li>
+      <li>용지(7칸 × 7줄)의 같은 가로줄이나 세로줄에 4개 이상</li>
+    </ul>
+    <p class="note">다섯 줄끼리는 같은 번호가 2개를 넘지 않게 골랐습니다.</p>
+  </section>
+
+  <footer>각 줄의 1등 확률은 어떤 번호든 1/8,145,060로 같습니다. 부담 없는 금액으로 즐기세요.</footer>
+</main>
+
+<script>
+const N = 45, K = 6, TOTAL = 8145060;
+// Ticket combinations per tier (1st..5th) out of TOTAL, for 6 numbers + bonus.
+const TIER_WAYS = [1, 6, 228, 11115, 182780];
+// Winners per tier, then the 1st-prize split by auto / manual / semi-auto, for five recent draws.
+const RECENT = [
+  [16, 64, 3350, 155108, 2608922, 11, 4, 1],
+  [10, 91, 3102, 163177, 2786728, 10, 0, 0],
+  [18, 80, 3731, 179216, 2848954, 11, 7, 0],
+  [12, 115, 3591, 174306, 2853501, 10, 2, 0],
+  [9, 104, 3206, 165377, 2729145, 8, 1, 0],
+];
+const SLIP_WIDTH = 7;
+
+function randInt(n) {
+  const buf = new Uint32Array(1);
+  const limit = Math.floor(2 ** 32 / n) * n;  // reject the tail so every value is equally likely
+  do crypto.getRandomValues(buf); while (buf[0] >= limit);
+  return buf[0] % n;
+}
+
+function sampleLine() {
+  const pool = Array.from({ length: N }, (_, i) => i + 1);
+  for (let i = 0; i < K; i++) {
+    const j = i + randInt(N - i);
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, K).sort((a, b) => a - b);
+}
+
+function longestRun(line) {
+  let best = 1, run = 1;
+  for (let i = 1; i < line.length; i++) {
+    run = line[i] === line[i - 1] + 1 ? run + 1 : 1;
+    best = Math.max(best, run);
+  }
+  return best;
+}
+
+function longestProgression(line) {
+  const members = new Set(line);
+  let best = 2;
+  for (let i = 0; i < line.length; i++) {
+    for (let j = i + 1; j < line.length; j++) {
+      const step = line[j] - line[i];
+      let length = 2, x = line[j];
+      while (members.has(x + step)) { x += step; length++; }
+      best = Math.max(best, length);
+    }
+  }
+  return best;
+}
+
+function isPopular(line) {
+  const rows = {}, cols = {};
+  for (const n of line) {
+    rows[Math.floor((n - 1) / SLIP_WIDTH)] = (rows[Math.floor((n - 1) / SLIP_WIDTH)] || 0) + 1;
+    cols[(n - 1) % SLIP_WIDTH] = (cols[(n - 1) % SLIP_WIDTH] || 0) + 1;
+  }
+  return line.filter(n => n > 31).length < 2
+    || longestRun(line) >= 3
+    || longestProgression(line) >= 4
+    || Math.max(...Object.values(rows), ...Object.values(cols)) >= 4;
+}
+
+function generate(games = 5, maxOverlap = 2) {
+  const picks = [];
+  while (picks.length < games) {
+    const line = sampleLine();
+    if (isPopular(line)) continue;
+    if (picks.some(p => p.filter(n => line.includes(n)).length > maxOverlap)) continue;
+    picks.push(line);
+  }
+  return picks;
+}
+
+function gamesSold(row) {
+  const winners = row.slice(0, 5).reduce((a, b) => a + b, 0);
+  return winners * TOTAL / TIER_WAYS.reduce((a, b) => a + b, 0);
+}
+
+function compare(rows) {
+  return TIER_WAYS.map((ways, t) => [
+    rows.reduce((a, r) => a + r[t], 0) / rows.length,
+    rows.reduce((a, r) => a + gamesSold(r) * ways / TOTAL, 0) / rows.length,
+  ]);
+}
+
+function nextDraw(now = new Date()) {
+  const day = 86400000, first = Date.UTC(2002, 11, 7);
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const saturday = today + ((6 - new Date(today).getUTCDay() + 7) % 7) * day;
+  return { no: Math.round((saturday - first) / (7 * day)) + 1, date: new Date(saturday) };
+}
+
+// ---- page ----
+const draw = nextDraw();
+const fmt = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+let current = [];
+
+function ballClass(n) { return "r" + Math.min(5, Math.ceil(n / 10)); }
+
+function render() {
+  current = generate();
+  const list = document.getElementById("lines");
+  list.replaceChildren(...current.map((line, i) => {
+    const li = document.createElement("li");
+    li.className = "line";
+    li.innerHTML = `<span class="tag">${"ABCDE"[i]}</span><span class="balls">${
+      line.map(n => `<span class="ball ${ballClass(n)}">${n}</span>`).join("")}</span>`;
+    li.setAttribute("aria-label", `${"ABCDE"[i]}줄: ${line.join(", ")}`);
+    return li;
+  }));
+  document.getElementById("status").textContent = "";
+}
+
+function copyText() {
+  const pad = n => String(n).padStart(2, "0");
+  return `${draw.no}회\n` + current.map((l, i) => `${"ABCDE"[i]}: ${l.map(pad).join(" ")}`).join("\n");
+}
+
+document.getElementById("redraw").addEventListener("click", render);
+document.getElementById("copy").addEventListener("click", () => {
+  const status = document.getElementById("status");
+  navigator.clipboard.writeText(copyText())
+    .then(() => { status.textContent = "번호를 복사했습니다."; })
+    .catch(() => {
+      const range = document.createRange();
+      range.selectNodeContents(document.getElementById("lines"));
+      const sel = getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      status.textContent = "번호를 선택해 두었습니다. 복사해서 쓰세요.";
+    });
+});
+
+const d = draw.date;
+document.getElementById("draw").textContent =
+  `로또 6/45 · ${draw.no}회 · ${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 토요일 추첨`;
+
+const games = RECENT.reduce((a, r) => a + gamesSold(r), 0) / RECENT.length;
+document.getElementById("games").textContent = `${(games / 1e8).toFixed(2)}억 게임`;
+const comparison = compare(RECENT);
+document.getElementById("tiers").innerHTML = comparison.map(([observed, expected], t) => {
+  const ratio = observed / expected;
+  return `<tr><td>${t + 1}등</td><td>${fmt.format(observed)}</td><td>${fmt.format(expected)}</td>` +
+    `<td><span class="chip${Math.abs(ratio - 1) > 0.05 ? " off" : ""}">${ratio.toFixed(2)}</span></td></tr>`;
+}).join("");
+
+const auto = RECENT.reduce((a, r) => a + r[5], 0), first = RECENT.reduce((a, r) => a + r[0], 0);
+const [firstObserved, firstExpected] = comparison[0];
+document.getElementById("first-note").textContent =
+  `1등만 기대값의 ${(firstObserved / firstExpected).toFixed(2)}배입니다. 1등 ${first}게임 중 ${auto}게임(${Math.round(auto / first * 100)}%)이 자동이었고, ` +
+  "수동 구매가 일부 조합에 몰려 있어서 그런 조합이 당첨되면 1등이 평소보다 훨씬 많이 나옵니다. " +
+  "그래서 이 비율에 맞는 번호는 사람들이 많이 고르는 패턴을 뺀 조합입니다.";
+
+render();
+</script>

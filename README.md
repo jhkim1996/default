@@ -13,6 +13,11 @@ python -m lotto ratio      # 최근 1~5등 당첨자 비율 분석 + 그 비율�
 python -m unittest         # 테스트
 ```
 
+## 웹 버전
+
+`web/index.html`은 설치나 다운로드 없이 브라우저에서 `ratio`와 같은 방식으로 번호 1장을 뽑는 페이지입니다.
+파일을 브라우저로 열면 되고, 휴대폰에서도 동작합니다. 판단 로직(패턴 필터, 등수별 기대값)은 파이썬 쪽과 같습니다.
+
 ## 실행파일
 
 파이썬 없이 쓰는 실행파일은 GitHub Actions가 푸시할 때마다 Windows·macOS·Linux용으로 만듭니다.
@@ -21,8 +26,11 @@ python -m unittest         # 테스트
 - **더블클릭**하면 `ratio`(최근 1~5등 비율 분석 + 그 비율에 맞는 번호) 1장이 나오고, 엔터를 누르면 다시 뽑고 `q`를 누르면 종료합니다.
 - 명령 프롬프트·터미널에서는 `lotto pick`, `lotto plan`, `lotto update`처럼 위 명령을 그대로 쓸 수 있습니다.
   `update`로 받은 당첨 이력은 실행파일 옆 `data` 폴더에 저장됩니다.
-- 서명하지 않은 실행파일이라 Windows에서 "PC 보호" 경고가 뜨면 **추가 정보 → 실행**을,
-  macOS에서는 **우클릭 → 열기**를 누르세요.
+- 코드 서명 인증서가 없는 실행파일이라 경고가 뜰 수 있습니다.
+  - Chrome이 다운로드를 막으면 `chrome://downloads`에서 해당 파일의 **계속** 또는 **위험한 파일 다운로드**를 누르세요.
+  - Windows에서 "PC 보호" 창이 뜨면 **추가 정보 → 실행**을 누르세요.
+  - macOS에서는 **우클릭 → 열기**를 누르세요.
+  - 경고 없이 쓰려면 위의 웹 버전을 쓰세요.
 
 직접 만들려면 `pip install pyinstaller` 후 `pyinstaller --onefile --name lotto lotto_app.py`를 실행하면 `dist/`에 생깁니다.
 (PyInstaller는 실행하는 OS용 파일만 만듭니다.)
