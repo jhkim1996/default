@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lotto import data, prizes, stats
+from lotto import data, prizes, stats, theory
 from lotto.__main__ import _line
 from lotto.generator import (
     generate,
@@ -45,6 +45,15 @@ class DataTest(unittest.TestCase):
         }
         self.assertEqual(data.parse_api(payload), data.Draw(1, dt.date(2002, 12, 7), (10, 23, 29, 33, 37, 40), 16))
         self.assertIsNone(data.parse_api({"returnValue": "fail"}))
+
+    def test_recent_draws(self):
+        self.assertEqual(data.RECENT[-1].date, dt.date(2026, 10, 31))
+        for d in data.RECENT:
+            self.assertEqual(len(set(d.numbers)), 6)
+            self.assertEqual(list(d.numbers), sorted(d.numbers))
+            self.assertNotIn(d.bonus, d.numbers)
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(data.history(Path(tmp) / "missing.csv"), data.RECENT)
 
     def test_csv_round_trip(self):
         draws = simulated_draws(5)
@@ -142,6 +151,28 @@ class PrizesTest(unittest.TestCase):
             self.assertEqual(prizes.load(path), [(1, 2, 3, 4, 5, 1, 0, 0)])
         for row in prizes.RECENT:
             self.assertEqual(row[0], sum(row[5:]))
+
+
+class TheoryTest(unittest.TestCase):
+    def test_unbought_combinations(self):
+        self.assertEqual(theory.unbought_combinations(0, 0.77), prizes.TOTAL)
+        # 1.2억 games, 77% auto: about 11 auto tickets per combination, so ~100 get none.
+        self.assertTrue(50 < theory.unbought_combinations(1.2e8, 0.77) < 150)
+
+    def test_overlap_and_birthday_share(self):
+        draws = [data.Draw(no, data.draw_date(no), nums, 45) for no, nums in
+                 [(1, (1, 2, 3, 32, 33, 34)), (2, (1, 2, 35, 36, 37, 38)), (3, (4, 5, 6, 7, 8, 9))]]
+        self.assertEqual(theory.consecutive_overlap(draws), 1.0)
+        self.assertAlmostEqual(theory.birthday_share(draws), 11 / 18)
+        # Fair draws share about 0.8 numbers with the next one.
+        self.assertAlmostEqual(theory.consecutive_overlap(simulated_draws(3000)), theory.EXPECTED_OVERLAP, delta=0.05)
+
+    def test_hot_lines(self):
+        lines, freq = theory.hot_lines(data.RECENT, rng=random.Random(1))
+        self.assertEqual(len(set(lines)), 5)
+        for line in lines:
+            self.assertTrue({13, 16} <= set(line))  # drawn 4 times each in 1239-1248
+            self.assertTrue(set(line) - {13, 16} <= {18, 22, 24, 38, 42})
 
 
 if __name__ == "__main__":

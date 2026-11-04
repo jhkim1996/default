@@ -26,6 +26,24 @@ class Draw:
     bonus: int
 
 
+# Most recent draws as reported in the news, so the tools work before `update` has run.
+RECENT = [
+    Draw(no, FIRST_DRAW + dt.timedelta(weeks=no - 1), numbers, bonus)
+    for no, numbers, bonus in [
+        (1239, (11, 13, 22, 32, 33, 36), 8),
+        (1240, (11, 13, 19, 20, 31, 44), 27),
+        (1241, (7, 13, 16, 23, 24, 43), 9),
+        (1242, (2, 4, 10, 16, 31, 41), 9),
+        (1243, (9, 18, 24, 38, 43, 44), 35),
+        (1244, (1, 13, 18, 26, 34, 38), 25),
+        (1245, (4, 5, 25, 28, 32, 42), 12),
+        (1246, (16, 22, 23, 24, 27, 28), 6),
+        (1247, (8, 14, 21, 22, 42, 45), 24),
+        (1248, (16, 18, 27, 36, 38, 42), 22),
+    ]
+]
+
+
 def draw_date(no: int) -> dt.date:
     return FIRST_DRAW + dt.timedelta(weeks=no - 1)
 
@@ -68,6 +86,11 @@ def load(path: Path = DEFAULT_CSV) -> list[Draw]:
             for row in csv.DictReader(f)
         ]
     return sorted(draws, key=lambda d: d.no)
+
+
+def history(path: Path = DEFAULT_CSV) -> list[Draw]:
+    """Cached draws, or the built-in RECENT ones when nothing has been downloaded."""
+    return load(path) or RECENT
 
 
 def save(draws: list[Draw], path: Path = DEFAULT_CSV) -> None:

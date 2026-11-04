@@ -27,13 +27,15 @@ DEFAULT_PRIZES = DATA_DIR / "prizes.csv"
 FIELDS = ["first", "second", "third", "fourth", "fifth", "auto", "manual", "semi_auto"]
 
 # Winners per tier, then the 1st-prize split by auto/manual/semi-auto ticket,
-# for five recent draws as shown on dhlottery result pages.
+# for draws 1242-1248 as shown on dhlottery result pages and in news reports.
 RECENT = [
-    (16, 64, 3350, 155108, 2608922, 11, 4, 1),
-    (10, 91, 3102, 163177, 2786728, 10, 0, 0),
-    (18, 80, 3731, 179216, 2848954, 11, 7, 0),
-    (12, 115, 3591, 174306, 2853501, 10, 2, 0),
-    (9, 104, 3206, 165377, 2729145, 8, 1, 0),
+    (9, 104, 3206, 165377, 2729145, 8, 1, 0),     # 1242
+    (12, 115, 3591, 174306, 2853501, 10, 2, 0),   # 1243
+    (18, 80, 3731, 179216, 2848954, 11, 7, 0),    # 1244
+    (10, 91, 3102, 163177, 2786728, 10, 0, 0),    # 1245
+    (16, 64, 3350, 155108, 2608922, 11, 4, 1),    # 1246
+    (8, 74, 2983, 154703, 2591204, 5, 3, 0),      # 1247
+    (15, 91, 3265, 167745, 2723467, 13, 2, 0),    # 1248
 ]
 
 

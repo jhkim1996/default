@@ -1,4 +1,4 @@
-"""Command line: python -m lotto {update,analyze,pick,plan,sim,ratio}."""
+"""Command line: python -m lotto {update,analyze,pick,plan,sim,ratio,theory}."""
 
 import argparse
 import datetime as dt
@@ -7,7 +7,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-from . import data, prizes, stats
+from . import data, prizes, stats, theory
 from .generator import TOTAL_COMBINATIONS, generate, least_and_middle, overlap_bound_rate, simulate_auto
 
 
@@ -27,7 +27,7 @@ def _line(text):
 
 def _context(args):
     """Draw number, RNG and the history-based filters shared by pick and plan."""
-    draws = data.load(args.csv)
+    draws = data.history(args.csv)
     draw_no = args.draw or data.draw_no_on_or_after(dt.date.today())
     rng = random.Random(args.seed) if args.seed is not None else random.SystemRandom()
     past = frozenset(d.numbers for d in draws)
@@ -159,6 +159,41 @@ def cmd_ratio(args):
     _print_missing_history(last_draw)
 
 
+def cmd_theory(args):
+    """Test 'the 1st-prize numbers come from what buyers picked', then pick as if it were true."""
+    rows = prizes.load(args.prizes)
+    draws = data.history(args.csv)[-args.window:]
+    draw_no, rng, _, _ = _context(args)
+    games = sum(prizes.games_sold(r) for r in rows) / len(rows)
+    auto_share = sum(r[5] for r in rows) / sum(r[0] for r in rows)
+    winners = [r[0] for r in rows]
+    overlap = theory.consecutive_overlap(draws)
+    low = theory.birthday_share(draws)
+    span = f"{draws[0].no}~{draws[-1].no}회"
+
+    print(f"[가정] 회당 약 {games / 1e8:.1f}억 게임의 번호를 모아 1등 번호를 정한다면\n")
+    print("① 가장 적게 팔린 조합을 1등으로 정한다면")
+    print(f"  판매의 약 {auto_share:.0%}가 자동(무작위)이라 아무도 안 산 조합이 매주 약 "
+          f"{theory.unbought_combinations(games, auto_share):,.0f}개 생깁니다.")
+    print(f"  → 1등은 매주 0명(이월)이어야 하는데, 실제 최근 {len(rows)}회 1등은 {min(winners)}~{max(winners)}명입니다.")
+    print("  → 게다가 내가 산 조합은 '아무도 안 산 조합'이 될 수 없어서 노릴 방법이 없습니다.\n")
+    print("② 가장 적게 고른 숫자 6개를 1등으로 정한다면")
+    print("  자동 번호는 고르게 퍼지므로 순위는 수동 구매자의 습관이 정하고, 습관은 매주 비슷합니다.")
+    print(f"  → 같은 번호가 매주 반복돼야 합니다. 연속한 두 회차가 겹치는 번호 (무작위면 평균 {theory.EXPECTED_OVERLAP:.1f}개)")
+    print(f"     실제 {span}: 평균 {overlap:.1f}개")
+    print(f"  → 사람들이 많이 고르는 생일 숫자(1~31)는 거의 안 나와야 합니다 (무작위면 {theory.BIRTHDAY_SHARE:.0%})")
+    print(f"     실제 {span}: 당첨번호의 {low:.0%}가 31 이하\n")
+
+    lines, freq = theory.hot_lines(draws, rng=rng)
+    cutoff = sorted(freq.values(), reverse=True)[stats.K - 1]
+    top = sorted((n for n in freq if freq[n] >= cutoff), key=lambda n: -freq[n])
+    print(f"[②번 가정으로 노린다면] 가정이 맞으면 최근 자주 나온 번호가 또 나와야 하므로 {span}에 많이 나온 번호로 5줄")
+    print("  많이 나온 번호: " + ", ".join(f"{n}({freq[n]}회)" for n in top) + "\n")
+    _print_sheet(f"{draw_no}회 ({data.draw_date(draw_no)}) 5,000원 1장", lines)
+    print(f"\n※ 최근 데이터는 두 가정 모두와 맞지 않아, 이 번호의 1등 확률도 다른 번호와 같은 1/{TOTAL_COMBINATIONS:,}입니다.")
+    print("  전체 이력으로 확인하려면 `update` 후 `analyze`의 hot(최근 많이 나온 번호) 백테스트를 보세요.")
+
+
 def main(argv=None):
     # Piped output on Windows goes through the ANSI code page, which may lack Hangul.
     for stream in (sys.stdout, sys.stderr):
@@ -198,6 +233,13 @@ def main(argv=None):
     ratio.add_argument("--draw", type=int, help="회차 (기본: 이번 주 토요일 회차)")
     ratio.add_argument("--seed", type=int, help="재현용 난수 시드")
     ratio.set_defaults(func=cmd_ratio)
+
+    th = sub.add_parser("theory", help="'1등 번호를 판매 번호로 정한다' 가정 검증 + 그 가정으로 노린 1장")
+    th.add_argument("--prizes", type=Path, default=prizes.DEFAULT_PRIZES, help="등수별 당첨자 수 CSV (없으면 내장 데이터)")
+    th.add_argument("--window", type=int, default=10, help="최근 몇 회차를 볼지 (기본 10)")
+    th.add_argument("--draw", type=int, help="회차 (기본: 이번 주 토요일 회차)")
+    th.add_argument("--seed", type=int, help="재현용 난수 시드")
+    th.set_defaults(func=cmd_theory)
 
     args = parser.parse_args(argv)
     args.func(args)
