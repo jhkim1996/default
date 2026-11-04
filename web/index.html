@@ -126,6 +126,11 @@ button {
   cursor: pointer;
 }
 button:hover { filter: brightness(1.08); }
+button.secondary { background: transparent; color: var(--omr); }
+button.secondary:hover { background: var(--omr-soft); filter: none; }
+.ball { animation: pop 260ms ease-out both; }
+@keyframes pop { from { transform: scale(0.85); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .ball { animation: none; } }
 button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 .status { font-size: 0.85rem; color: var(--muted); }
 
@@ -174,7 +179,8 @@ footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--ru
     </div>
     <ol class="lines" id="lines"></ol>
     <div class="actions">
-      <button type="button" id="copy">번호 복사</button>
+      <button type="button" id="redraw">다시 뽑기</button>
+      <button type="button" class="secondary" id="copy">번호 복사</button>
       <span class="status" id="status" role="status"></span>
     </div>
   </section>
@@ -197,14 +203,14 @@ footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--ru
           <dd>자동 번호는 고르게 퍼지므로 순위는 수동 구매자의 습관이 정하고, 습관은 매주 비슷합니다. 그래서 같은 번호가 매주 반복되고, 사람들이 많이 고르는 생일 숫자(1~31)는 거의 안 나와야 합니다.</dd>
           <dt>실제</dt><dd id="b-actual"></dd>
         </dl>
-        <p class="note">위의 번호는 이 가정이 맞다고 치고 고른 것입니다. 가정이 맞다면 최근 자주 나온 번호가 계속 나와야 하기 때문입니다.</p>
+        <p class="note">위의 번호는 이 가정이 맞다고 치고 고른 것입니다. 가정이 맞다면 최근 자주 나온 번호가 계속 나와야 하므로, 최근 10회에 나온 횟수만큼 가중치를 줘서 뽑았습니다.</p>
       </article>
     </div>
   </section>
 
   <section class="info" aria-labelledby="draws-title">
     <h2 id="draws-title">최근 10회 당첨번호</h2>
-    <p class="note">테두리가 있는 공이 위 5줄에 쓴, 많이 나온 번호입니다.</p>
+    <p class="note">테두리가 있는 공이 최근 10회에 가장 많이 나온 번호입니다. 이 번호들이 가장 잘 뽑힙니다.</p>
     <ol class="draws" id="draws"></ol>
   </section>
 
@@ -250,24 +256,20 @@ function frequencies(draws) {
   return freq;
 }
 
-function combinations(items, k, start = 0, acc = [], out = []) {
-  if (acc.length === k) { out.push([...acc]); return out; }
-  for (let i = start; i < items.length; i++) {
-    acc.push(items[i]);
-    combinations(items, k, i + 1, acc, out);
-    acc.pop();
+// Distinct random lines, each number weighted by how often it came up; numbers not drawn are left out.
+function hotLines(freq, games = 5) {
+  const lines = [];
+  while (lines.length < games) {
+    const pool = Object.keys(freq).map(Number).filter(n => freq[n] > 0), line = [];
+    for (let k = 0; k < K; k++) {
+      let r = random01() * pool.reduce((a, n) => a + freq[n], 0), i = 0;
+      while ((r -= freq[pool[i]]) >= 0) i++;
+      line.push(pool.splice(i, 1)[0]);
+    }
+    line.sort((a, b) => a - b);
+    if (!lines.some(l => l.join() === line.join())) lines.push(line);
   }
-  return out;
-}
-
-// Combinations of the 10 most frequent numbers, ranked by total frequency; ties broken at random.
-function hotLines(draws, games = 5) {
-  const freq = frequencies(draws);
-  const keyed = Array.from({ length: N }, (_, i) => [i + 1, random01()]);
-  const pool = keyed.sort((a, b) => freq[b[0]] - freq[a[0]] || a[1] - b[1]).slice(0, K + 4).map(x => x[0]);
-  const scored = combinations(pool, K).map(c => [c, c.reduce((a, n) => a + freq[n], 0), random01()]);
-  scored.sort((a, b) => b[1] - a[1] || a[2] - b[2]);
-  return { lines: scored.slice(0, games).map(([c]) => c.sort((a, b) => a - b)), freq };
+  return lines;
 }
 
 function consecutiveOverlap(draws) {
@@ -293,7 +295,8 @@ function nextDraw(now = new Date()) {
 
 // ---- page ----
 const draw = nextDraw();
-const { lines, freq } = hotLines(DRAWS);
+const freq = frequencies(DRAWS);
+let lines = [];
 const cutoff = Object.values(freq).sort((a, b) => b - a)[K - 1];
 const hot = Object.keys(freq).map(Number).filter(n => freq[n] >= cutoff).sort((a, b) => freq[b] - freq[a] || a - b);
 const ball = (n, extra = "") => `<span class="ball r${Math.min(5, Math.ceil(n / 10))}${extra}">${n}</span>`;
@@ -303,10 +306,18 @@ const d = draw.date;
 document.getElementById("draw").textContent =
   `로또 6/45 · ${draw.no}회 · ${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 토요일 추첨`;
 document.getElementById("hot-note").textContent =
-  `②번 가정으로 노린 번호: ${span}에 많이 나온 ${hot.map(n => `${n}(${freq[n]}회)`).join(", ")}로 만든 5줄`;
-document.getElementById("lines").innerHTML = lines.map((line, i) =>
-  `<li class="line" aria-label="${"ABCDE"[i]}줄: ${line.join(", ")}"><span class="tag">${"ABCDE"[i]}</span>` +
-  `<span class="balls">${line.map(n => ball(n)).join("")}</span></li>`).join("");
+  `②번 가정으로 노린 번호: ${span}에 나온 횟수만큼 가중치를 줘서 뽑습니다. ` +
+  `많이 나온 ${hot.map(n => `${n}(${freq[n]}회)`).join(", ")}이 가장 잘 뽑힙니다.`;
+
+function render() {
+  lines = hotLines(freq);
+  document.getElementById("lines").innerHTML = lines.map((line, i) =>
+    `<li class="line" aria-label="${"ABCDE"[i]}줄: ${line.join(", ")}"><span class="tag">${"ABCDE"[i]}</span>` +
+    `<span class="balls">${line.map(n => ball(n)).join("")}</span></li>`).join("");
+  document.getElementById("status").textContent = "";
+}
+render();
+document.getElementById("redraw").addEventListener("click", render);
 
 const games = PRIZES.reduce((a, r) => a + gamesSold(r), 0) / PRIZES.length;
 const autoShare = PRIZES.reduce((a, r) => a + r[5], 0) / PRIZES.reduce((a, r) => a + r[0], 0);

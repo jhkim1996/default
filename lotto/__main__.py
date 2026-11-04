@@ -187,7 +187,8 @@ def cmd_theory(args):
     lines, freq = theory.hot_lines(draws, rng=rng)
     cutoff = sorted(freq.values(), reverse=True)[stats.K - 1]
     top = sorted((n for n in freq if freq[n] >= cutoff), key=lambda n: -freq[n])
-    print(f"[②번 가정으로 노린다면] 가정이 맞으면 최근 자주 나온 번호가 또 나와야 하므로 {span}에 많이 나온 번호로 5줄")
+    print(f"[②번 가정으로 노린다면] 가정이 맞으면 최근 자주 나온 번호가 또 나와야 하므로, {span}에 나온 횟수만큼")
+    print("  가중치를 줘서 뽑았습니다. 많이 나온 번호일수록 잘 뽑히고, 뽑을 때마다 달라집니다.")
     print("  많이 나온 번호: " + ", ".join(f"{n}({freq[n]}회)" for n in top) + "\n")
     _print_sheet(f"{draw_no}회 ({data.draw_date(draw_no)}) 5,000원 1장", lines)
     print(f"\n※ 최근 데이터는 두 가정 모두와 맞지 않아, 이 번호의 1등 확률도 다른 번호와 같은 1/{TOTAL_COMBINATIONS:,}입니다.")

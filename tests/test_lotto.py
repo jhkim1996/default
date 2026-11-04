@@ -3,6 +3,7 @@ import datetime as dt
 import random
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 
 from lotto import data, prizes, stats, theory
@@ -171,9 +172,17 @@ class TheoryTest(unittest.TestCase):
         lines, freq = theory.hot_lines(data.RECENT, rng=random.Random(1))
         self.assertEqual(len(set(lines)), 5)
         for line in lines:
-            self.assertTrue({13, 16} <= set(line))  # drawn 4 times each in 1239-1248
-            self.assertTrue(set(line) - {13, 16} <= {18, 22, 24, 38, 42})
-
+            self.assertEqual(list(line), sorted(set(line)))
+            self.assertTrue(all(freq[n] > 0 for n in line))  # only numbers drawn lately
+        # Weighted: 13 (drawn 4 times in 1239-1248) comes up far more than 45 (drawn once).
+        rng = random.Random(2)
+        counts = Counter(n for _ in range(200) for line in theory.hot_lines(data.RECENT, rng=rng)[0] for n in line)
+        self.assertGreater(counts[13], 2 * counts[45])
+        # Different presses give different sheets.
+        self.assertNotEqual(theory.hot_lines(data.RECENT, rng=random.Random(3))[0],
+                            theory.hot_lines(data.RECENT, rng=random.Random(4))[0])
+        with self.assertRaises(ValueError):
+            theory.hot_lines(data.RECENT[-1:], max_tries=100)
 
 if __name__ == "__main__":
     unittest.main()
