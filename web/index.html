@@ -158,6 +158,21 @@ dl.facts dt { color: var(--muted); font-size: 0.85rem; padding-top: 0.1rem; }
 dl.facts dd { margin: 0; min-width: 0; }
 .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
+/* Recent record */
+.table-wrap { overflow-x: auto; }
+table.record { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.record th, table.record td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--rule); white-space: nowrap; text-align: right; }
+table.record th { font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+table.record th:first-child, table.record td:first-child { text-align: left; }
+table.record td { font-family: var(--mono); font-size: 0.9rem; }
+table.record td:first-child { font-family: var(--body); font-weight: 600; }
+.weeks { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: 0.35rem 1rem; }
+.week { display: flex; justify-content: space-between; gap: 0.5rem; border-bottom: 1px solid var(--rule); padding-block: 0.3rem; }
+.week .no { color: var(--muted); font-size: 0.85rem; }
+.week .val { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.week .val.up { color: var(--ink); font-weight: 600; }
+.week .val.down { color: var(--muted); }
+
 /* Recent draws */
 ol.draws { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
 ol.draws li { display: flex; align-items: center; gap: 0.75rem; }
@@ -183,6 +198,19 @@ footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--ru
       <button type="button" class="secondary" id="copy">번호 복사</button>
       <span class="status" id="status" role="status"></span>
     </div>
+  </section>
+
+  <section class="info" aria-labelledby="record-title">
+    <h2 id="record-title">이 방식의 최근 성적</h2>
+    <p class="note" id="record-note"></p>
+    <div class="table-wrap">
+      <table class="record">
+        <thead><tr><th>한 줄에 맞힌 개수</th><th>0개</th><th>1개</th><th>2개</th><th>3개 이상</th></tr></thead>
+        <tbody id="record-dist"></tbody>
+      </table>
+    </div>
+    <div class="weeks" id="record-weeks"></div>
+    <p id="record-verdict"></p>
   </section>
 
   <section class="info" aria-labelledby="test-title">
@@ -222,6 +250,16 @@ const N = 45, K = 6, TOTAL = 8145060;
 const TIER_WAYS = [1, 6, 228, 11115, 182780];
 // Draw number, winning numbers, bonus (news reports).
 const DRAWS = [
+  [1229, [12, 13, 29, 34, 37, 42], 16],
+  [1230, [3, 8, 9, 22, 28, 42], 45],
+  [1231, [4, 13, 14, 18, 31, 38], 15],
+  [1232, [12, 15, 19, 22, 24, 36], 3],
+  [1233, [2, 7, 20, 25, 37, 40], 29],
+  [1234, [1, 15, 19, 31, 35, 43], 27],
+  [1235, [6, 7, 11, 15, 39, 43], 20],
+  [1236, [12, 18, 21, 29, 34, 38], 10],
+  [1237, [10, 20, 23, 34, 37, 40], 36],
+  [1238, [2, 13, 18, 32, 38, 42], 22],
   [1239, [11, 13, 22, 32, 33, 36], 8],
   [1240, [11, 13, 19, 20, 31, 44], 27],
   [1241, [7, 13, 16, 23, 24, 43], 9],
@@ -232,8 +270,11 @@ const DRAWS = [
   [1246, [16, 22, 23, 24, 27, 28], 6],
   [1247, [8, 14, 21, 22, 42, 45], 24],
   [1248, [16, 18, 27, 36, 38, 42], 22],
+  [1249, [2, 11, 16, 25, 34, 35], 14],
+  [1250, [1, 5, 18, 23, 27, 28], 8],
 ];
-// Winners per tier, then the 1st-prize split by auto / manual / semi-auto, draws 1242-1248.
+const WINDOW = 10, WEEKS = 12;
+// Winners per tier, then the 1st-prize split by auto / manual / semi-auto, draws 1242-1248 and 1250.
 const PRIZES = [
   [9, 104, 3206, 165377, 2729145, 8, 1, 0],
   [12, 115, 3591, 174306, 2853501, 10, 2, 0],
@@ -242,6 +283,7 @@ const PRIZES = [
   [16, 64, 3350, 155108, 2608922, 11, 4, 1],
   [8, 74, 2983, 154703, 2591204, 5, 3, 0],
   [15, 91, 3265, 167745, 2723467, 13, 2, 0],
+  [9, 100, 3120, 156721, 2658318, 9, 0, 0],
 ];
 
 function random01() {
@@ -293,14 +335,37 @@ function nextDraw(now = new Date()) {
   return { no: Math.round((saturday - first) / (7 * day)) + 1, date: new Date(saturday) };
 }
 
+function comb(n, k) {
+  let c = 1;
+  for (let i = 0; i < k; i++) c = c * (n - i) / (i + 1);
+  return c;
+}
+// Share of lines matching 0..6 numbers of a fair draw, whatever the line.
+const MATCH_ODDS = Array.from({ length: K + 1 }, (_, h) => comb(K, h) * comb(N - K, K - h) / TOTAL);
+
+// Replay hotLines on each of the last `weeks` draws, using only the `window` draws before it.
+function backtest(draws, window = WINDOW, weeks = WEEKS, sheets = 400) {
+  const results = [];
+  for (let i = Math.max(window, draws.length - weeks); i < draws.length; i++) {
+    const target = draws[i][1], f = frequencies(draws.slice(i - window, i)), hits = Array(K + 1).fill(0);
+    for (let s = 0; s < sheets; s++) for (const line of hotLines(f)) hits[line.filter(n => target.includes(n)).length]++;
+    results.push({ no: draws[i][0], hits });
+  }
+  return results;
+}
+
+const meanHits = hits => hits.reduce((a, c, h) => a + h * c, 0) / hits.reduce((a, c) => a + c, 0);
+
 // ---- page ----
 const draw = nextDraw();
-const freq = frequencies(DRAWS);
+const recent = DRAWS.slice(-WINDOW);
+const freq = frequencies(recent);
 let lines = [];
 const cutoff = Object.values(freq).sort((a, b) => b - a)[K - 1];
 const hot = Object.keys(freq).map(Number).filter(n => freq[n] >= cutoff).sort((a, b) => freq[b] - freq[a] || a - b);
 const ball = (n, extra = "") => `<span class="ball r${Math.min(5, Math.ceil(n / 10))}${extra}">${n}</span>`;
-const span = `${DRAWS[0][0]}~${DRAWS[DRAWS.length - 1][0]}회`;
+const span = `${recent[0][0]}~${recent[recent.length - 1][0]}회`;
+const tested = `${DRAWS[0][0]}~${DRAWS[DRAWS.length - 1][0]}회`;
 
 const d = draw.date;
 document.getElementById("draw").textContent =
@@ -328,10 +393,35 @@ document.getElementById("a-predict").textContent =
 document.getElementById("a-actual").innerHTML =
   `최근 ${PRIZES.length}회 1등 당첨자 <span class="num">${winners.join(", ")}</span>명. 0명인 주가 없습니다.`;
 document.getElementById("b-actual").innerHTML =
-  `${span} 연속한 두 회차가 겹친 번호는 평균 <span class="num">${consecutiveOverlap(DRAWS).toFixed(1)}</span>개로, 무작위일 때(0.8개)와 비슷합니다. ` +
+  `${tested} 연속한 두 회차가 겹친 번호는 평균 <span class="num">${consecutiveOverlap(DRAWS).toFixed(1)}</span>개로, 무작위일 때(0.8개)와 비슷합니다. ` +
   `당첨번호의 <span class="num">${Math.round(birthdayShare(DRAWS) * 100)}%</span>가 31 이하로, 이것도 무작위일 때(69%)와 같습니다.`;
 
-document.getElementById("draws").innerHTML = [...DRAWS].reverse().map(([no, nums]) =>
+const results = backtest(DRAWS);
+const means = results.map(r => meanHits(r.hits));
+const total = results.reduce((acc, r) => acc.map((c, h) => c + r.hits[h]), Array(K + 1).fill(0));
+const lineCount = total.reduce((a, c) => a + c, 0);
+const pct = (x, digits = 0) => `${(x * 100).toFixed(digits)}%`;
+const distRow = (label, p) => `<tr><td>${label}</td><td>${pct(p[0])}</td><td>${pct(p[1])}</td><td>${pct(p[2])}</td>` +
+  `<td>${pct(p.slice(3).reduce((a, b) => a + b, 0), 1)}</td></tr>`;
+document.getElementById("record-note").textContent =
+  `최근 ${results.length}주 각각, 그 주 직전 ${WINDOW}회만 보고 이 방식으로 ${(lineCount / results.length).toLocaleString("ko-KR")}줄씩 뽑았을 때 ` +
+  `실제 당첨번호와 몇 개가 맞았는지입니다. 자동(무작위)은 한 줄에 평균 0.8개를 맞힙니다.`;
+document.getElementById("record-dist").innerHTML =
+  distRow("이 방식", total.map(c => c / lineCount)) + distRow("자동", MATCH_ODDS);
+document.getElementById("record-weeks").innerHTML = results.map((r, i) =>
+  `<div class="week"><span class="no">${r.no}회</span>` +
+  `<span class="val ${means[i] > 0.8 ? "up" : "down"}">${means[i].toFixed(2)}개</span></div>`).join("");
+const mean = means.reduce((a, b) => a + b, 0) / means.length;
+const sd = Math.sqrt(means.reduce((a, m) => a + (m - mean) ** 2, 0) / (means.length - 1));
+const chance = Math.abs(mean - 0.8) < 2 * sd / Math.sqrt(means.length);
+document.getElementById("record-verdict").textContent =
+  `${means.length}주 평균 ${mean.toFixed(2)}개 (주마다 ${Math.min(...means).toFixed(2)}~${Math.max(...means).toFixed(2)}개). ` +
+  (chance ? "당첨번호가 최근 자주 나온 번호와 겹치는 주에는 2개 맞는 줄이 많고, 안 겹치는 주에는 대부분 0~1개입니다. " +
+            "자동과의 차이는 이 기간 동안 우연으로도 생기는 범위입니다."
+          : mean > 0.8 ? "자동보다 많이 맞혔고, 우연만으로 보기는 어려운 차이입니다."
+                       : "자동보다 적게 맞혔고, 우연만으로 보기는 어려운 차이입니다.");
+
+document.getElementById("draws").innerHTML = [...recent].reverse().map(([no, nums]) =>
   `<li><span class="drawno">${no}회</span><span class="balls">${
     nums.map(n => ball(n, " small" + (hot.includes(n) ? " hot" : ""))).join("")}</span></li>`).join("");
 

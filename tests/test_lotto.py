@@ -48,7 +48,8 @@ class DataTest(unittest.TestCase):
         self.assertIsNone(data.parse_api({"returnValue": "fail"}))
 
     def test_recent_draws(self):
-        self.assertEqual(data.RECENT[-1].date, dt.date(2026, 10, 31))
+        self.assertEqual(data.RECENT[-1].date, dt.date(2026, 11, 14))
+        self.assertEqual([d.no for d in data.RECENT], list(range(1229, 1251)))
         for d in data.RECENT:
             self.assertEqual(len(set(d.numbers)), 6)
             self.assertEqual(list(d.numbers), sorted(d.numbers))
@@ -169,20 +170,33 @@ class TheoryTest(unittest.TestCase):
         self.assertAlmostEqual(theory.consecutive_overlap(simulated_draws(3000)), theory.EXPECTED_OVERLAP, delta=0.05)
 
     def test_hot_lines(self):
-        lines, freq = theory.hot_lines(data.RECENT, rng=random.Random(1))
+        window = data.RECENT[-10:]
+        lines, freq = theory.hot_lines(window, rng=random.Random(1))
         self.assertEqual(len(set(lines)), 5)
         for line in lines:
             self.assertEqual(list(line), sorted(set(line)))
             self.assertTrue(all(freq[n] > 0 for n in line))  # only numbers drawn lately
-        # Weighted: 13 (drawn 4 times in 1239-1248) comes up far more than 45 (drawn once).
+        # Weighted: the most drawn number comes up far more than one drawn once.
+        hot = max(freq, key=freq.get)
+        once = next(n for n in freq if freq[n] == 1)
+        self.assertGreaterEqual(freq[hot], 4)
         rng = random.Random(2)
-        counts = Counter(n for _ in range(200) for line in theory.hot_lines(data.RECENT, rng=rng)[0] for n in line)
-        self.assertGreater(counts[13], 2 * counts[45])
+        counts = Counter(n for _ in range(200) for line in theory.hot_lines(window, rng=rng)[0] for n in line)
+        self.assertGreater(counts[hot], 2 * counts[once])
         # Different presses give different sheets.
-        self.assertNotEqual(theory.hot_lines(data.RECENT, rng=random.Random(3))[0],
-                            theory.hot_lines(data.RECENT, rng=random.Random(4))[0])
+        self.assertNotEqual(theory.hot_lines(window, rng=random.Random(3))[0],
+                            theory.hot_lines(window, rng=random.Random(4))[0])
         with self.assertRaises(ValueError):
             theory.hot_lines(data.RECENT[-1:], max_tries=100)
+
+    def test_backtest(self):
+        results = theory.backtest(data.RECENT, window=10, weeks=12, sheets=20)
+        self.assertEqual([d.no for d, _ in results], list(range(1239, 1251)))
+        self.assertTrue(all(sum(hits.values()) == 100 for _, hits in results))
+        # On fair draws no way of picking beats 0.8 matches per line in the long run.
+        fair = theory.backtest(simulated_draws(130, seed=5), window=10, weeks=120, sheets=20)
+        mean = sum(theory.mean_hits(h) for _, h in fair) / len(fair)
+        self.assertAlmostEqual(mean, stats.EXPECTED_HITS, delta=0.1)
 
 if __name__ == "__main__":
     unittest.main()

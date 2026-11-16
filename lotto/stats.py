@@ -12,7 +12,8 @@ NUMBERS = range(1, N + 1)
 # are the numbers a strategy has to beat to show it predicts anything.
 EXPECTED_HITS = K * K / N
 HITS_VAR = K * (K / N) * ((N - K) / N) * ((N - K) / (N - 1))
-P_THREE_PLUS = sum(math.comb(K, h) * math.comb(N - K, K - h) for h in range(3, K + 1)) / math.comb(N, K)
+MATCH_ODDS = [math.comb(K, h) * math.comb(N - K, K - h) / math.comb(N, K) for h in range(K + 1)]
+P_THREE_PLUS = sum(MATCH_ODDS[3:])
 
 
 def frequencies(draws) -> dict[int, int]:

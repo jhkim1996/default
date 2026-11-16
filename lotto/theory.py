@@ -11,6 +11,7 @@ If the second reading held, the numbers drawn most often lately are the ones to 
 
 import math
 import random
+from collections import Counter
 
 from . import prizes
 from .stats import EXPECTED_HITS, K, N, NUMBERS, frequencies
@@ -55,3 +56,24 @@ def hot_lines(draws, games=5, rng=None, max_tries=10_000):
         if len(line) == K and line not in lines:
             lines.append(line)
     raise ValueError(f"not enough distinct numbers in {len(draws)} draws for {games} lines; use more draws")
+
+
+def backtest(draws, window=10, weeks=12, sheets=400, seed=0) -> list[tuple]:
+    """Replay hot_lines on each of the last `weeks` draws, using only the `window` draws before it.
+
+    Returns [(draw, Counter of how many numbers each line matched)] over `sheets` sheets per draw.
+    """
+    rng = random.Random(seed)
+    results = []
+    for i in range(max(window, len(draws) - weeks), len(draws)):
+        target = set(draws[i].numbers)
+        hits = Counter()
+        for _ in range(sheets):
+            lines, _ = hot_lines(draws[i - window:i], rng=rng)
+            hits.update(len(target & set(line)) for line in lines)
+        results.append((draws[i], hits))
+    return results
+
+
+def mean_hits(hits: Counter) -> float:
+    return sum(h * c for h, c in hits.items()) / sum(hits.values())

@@ -4,7 +4,9 @@ import argparse
 import datetime as dt
 import random
 import sys
+import statistics
 import unicodedata
+from collections import Counter
 from pathlib import Path
 
 from . import data, prizes, stats, theory
@@ -162,13 +164,15 @@ def cmd_ratio(args):
 def cmd_theory(args):
     """Test 'the 1st-prize numbers come from what buyers picked', then pick as if it were true."""
     rows = prizes.load(args.prizes)
-    draws = data.history(args.csv)[-args.window:]
+    history = data.history(args.csv)
+    draws = history[-args.window:]
     draw_no, rng, _, _ = _context(args)
     games = sum(prizes.games_sold(r) for r in rows) / len(rows)
     auto_share = sum(r[5] for r in rows) / sum(r[0] for r in rows)
     winners = [r[0] for r in rows]
-    overlap = theory.consecutive_overlap(draws)
-    low = theory.birthday_share(draws)
+    overlap = theory.consecutive_overlap(history)
+    low = theory.birthday_share(history)
+    tested = f"{history[0].no}~{history[-1].no}회"
     span = f"{draws[0].no}~{draws[-1].no}회"
 
     print(f"[가정] 회당 약 {games / 1e8:.1f}억 게임의 번호를 모아 1등 번호를 정한다면\n")
@@ -180,9 +184,9 @@ def cmd_theory(args):
     print("② 가장 적게 고른 숫자 6개를 1등으로 정한다면")
     print("  자동 번호는 고르게 퍼지므로 순위는 수동 구매자의 습관이 정하고, 습관은 매주 비슷합니다.")
     print(f"  → 같은 번호가 매주 반복돼야 합니다. 연속한 두 회차가 겹치는 번호 (무작위면 평균 {theory.EXPECTED_OVERLAP:.1f}개)")
-    print(f"     실제 {span}: 평균 {overlap:.1f}개")
+    print(f"     실제 {tested}: 평균 {overlap:.1f}개")
     print(f"  → 사람들이 많이 고르는 생일 숫자(1~31)는 거의 안 나와야 합니다 (무작위면 {theory.BIRTHDAY_SHARE:.0%})")
-    print(f"     실제 {span}: 당첨번호의 {low:.0%}가 31 이하\n")
+    print(f"     실제 {tested}: 당첨번호의 {low:.0%}가 31 이하\n")
 
     lines, freq = theory.hot_lines(draws, rng=rng)
     cutoff = sorted(freq.values(), reverse=True)[stats.K - 1]
@@ -191,8 +195,36 @@ def cmd_theory(args):
     print("  가중치를 줘서 뽑았습니다. 많이 나온 번호일수록 잘 뽑히고, 뽑을 때마다 달라집니다.")
     print("  많이 나온 번호: " + ", ".join(f"{n}({freq[n]}회)" for n in top) + "\n")
     _print_sheet(f"{draw_no}회 ({data.draw_date(draw_no)}) 5,000원 1장", lines)
+    _print_backtest(theory.backtest(history, args.window, args.weeks), args.window)
     print(f"\n※ 최근 데이터는 두 가정 모두와 맞지 않아, 이 번호의 1등 확률도 다른 번호와 같은 1/{TOTAL_COMBINATIONS:,}입니다.")
-    print("  전체 이력으로 확인하려면 `update` 후 `analyze`의 hot(최근 많이 나온 번호) 백테스트를 보세요.")
+
+
+def _print_backtest(results, window):
+    """How the theory picks would have done in recent weeks, next to auto (random) lines."""
+    if len(results) < 2:
+        return
+    means = [theory.mean_hits(hits) for _, hits in results]
+    print(f"\n[이 방식의 최근 성적] 그 주 직전 {window}회만 보고 뽑았다면, 한 줄에 맞힌 개수 평균 "
+          f"(자동은 {stats.EXPECTED_HITS:.1f}개)")
+    cells = [f"{d.no}회 {m:.2f}" for (d, _), m in zip(results, means)]
+    for i in range(0, len(cells), 4):
+        print("  " + "   ".join(cells[i:i + 4]))
+    total = sum((hits for _, hits in results), Counter())
+    lines = sum(total.values())
+    method = [total[0] / lines, total[1] / lines, total[2] / lines, sum(c for h, c in total.items() if h >= 3) / lines]
+    auto = [*stats.MATCH_ODDS[:3], stats.P_THREE_PLUS]
+    print("  한 줄에 맞힌 개수")
+    for label, (zero, one, two, three) in (("이 방식", method), ("자동", auto)):
+        print(f"    {_cell(label, 8, left=True)}0개 {zero:.0%} · 1개 {one:.0%} · 2개 {two:.0%} · 3개 이상 {three:.1%}")
+    mean = sum(means) / len(means)
+    se = statistics.stdev(means) / len(means) ** 0.5
+    if abs(mean - stats.EXPECTED_HITS) < 2 * se:
+        verdict = "주마다 크게 오르내리고, 자동과의 차이는 우연으로 생길 수 있는 범위입니다."
+    elif mean > stats.EXPECTED_HITS:
+        verdict = "자동보다 많이 맞혔고, 우연만으로 보기는 어려운 차이입니다."
+    else:
+        verdict = "자동보다 적게 맞혔고, 우연만으로 보기는 어려운 차이입니다."
+    print(f"  {len(means)}주 평균 {mean:.2f}개 ({min(means):.2f}~{max(means):.2f}). {verdict}")
 
 
 def main(argv=None):
@@ -238,6 +270,7 @@ def main(argv=None):
     th = sub.add_parser("theory", help="'1등 번호를 판매 번호로 정한다' 가정 검증 + 그 가정으로 노린 1장")
     th.add_argument("--prizes", type=Path, default=prizes.DEFAULT_PRIZES, help="등수별 당첨자 수 CSV (없으면 내장 데이터)")
     th.add_argument("--window", type=int, default=10, help="최근 몇 회차를 볼지 (기본 10)")
+    th.add_argument("--weeks", type=int, default=12, help="최근 성적을 확인할 주 수 (기본 12)")
     th.add_argument("--draw", type=int, help="회차 (기본: 이번 주 토요일 회차)")
     th.add_argument("--seed", type=int, help="재현용 난수 시드")
     th.set_defaults(func=cmd_theory)
